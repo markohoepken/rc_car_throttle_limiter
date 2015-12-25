@@ -49,7 +49,7 @@
 #define EEPROM_MAGIC_KEY_SIZE 17
 const uint8_t MagicKey[] PROGMEM = { // key to check if EEprom matches software
   'T','H','R','O','T','T','L','E',' ',
-  'R','E','V','1','.','0','.','1'
+  'R','E','V','1','.','0','.','0'
 };
 
 #include <EEPROM.h>

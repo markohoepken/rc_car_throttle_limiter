@@ -1,7 +1,6 @@
-// Sweep
+// RC Car throttle limiter.
 // by Marko Hoepken
 // 25th Dec 2015
-// RC Car throttle limiter.
 //
 // This simple Arduino application will go into an RC Car.
 // The Arduino will sit between the receiver and the ESC controlling the motor.
@@ -39,12 +38,27 @@
 #define STATE_BACKWARD 2 // backward driving
 #define STATE_BREAK 3    // breaking
 
+// eeprom handling
+#define EEPROM_ADR_MIN_L 0
+#define EEPROM_ADR_MIN_H 1
+#define EEPROM_ADR_MAX_L 2
+#define EEPROM_ADR_MAX_H 3
+#define EEPROM_ADR_STOP_L 4
+#define EEPROM_ADR_STOP_H 5
+#define EEPROM_ADR_MAGIC_KEY 6
+#define EEPROM_MAGIC_KEY_SIZE 17
+const uint8_t MagicKey[] PROGMEM = { // key to check if EEprom matches software
+  'T','H','R','O','T','T','L','E',' ',
+  'R','E','V','1','.','0','.','1'
+};
+
+#include <EEPROM.h>
 #include <Servo.h> 
 Servo my_esc;  // create servo object to control a servo 
  
 // range limits 
-uint16_t rc_out_max = 1750;
-uint16_t rc_out_min = 1200;
+uint16_t rc_out_max = MAX;
+uint16_t rc_out_min = MIN;
 uint16_t rc_in_neutral = STOP;
 // init states
 uint8_t state=STATE_STOP;
@@ -62,6 +76,40 @@ void setup()
   my_esc.writeMicroseconds(rc_in_neutral);
   // input key for programming
   pinMode(PROG_KEY, INPUT_PULLUP);  
+ 
+  // check if eeprom is matching current software
+  // the check is done by comparing magic key in eeprom
+  uint8_t eeprom_invalid=0;
+  for(int i=0; i<EEPROM_MAGIC_KEY_SIZE; i++)
+   {
+        if((uint8_t)EEPROM.read(EEPROM_ADR_MAGIC_KEY+i) != (uint8_t)pgm_read_word_near(MagicKey + i))
+        {
+            eeprom_invalid=1;
+            break;
+        }        
+   }
+    if(eeprom_invalid) // EEprom does not match current software, must store new defaults
+    {
+        // save 16 bit
+        EEPROM.write(EEPROM_ADR_MIN_L,lowByte(MIN));        
+        EEPROM.write(EEPROM_ADR_MIN_H,highByte(MIN));    
+        // save 16 bit
+        EEPROM.write(EEPROM_ADR_MAX_L,lowByte(MAX));
+        EEPROM.write(EEPROM_ADR_MAX_H,highByte(MAX));
+        // save 16 bit
+        EEPROM.write(EEPROM_ADR_STOP_L,lowByte(STOP));
+        EEPROM.write(EEPROM_ADR_STOP_H,highByte(STOP));
+        // store magic key for next check
+        for(int i=0; i<EEPROM_MAGIC_KEY_SIZE; i++)
+        {
+            EEPROM.write(EEPROM_ADR_MAGIC_KEY+i,pgm_read_word_near(MagicKey + i));
+        }         
+    }
+    // read settings from EEProm
+    rc_out_min=((EEPROM.read(EEPROM_ADR_MIN_H)<<8) | (EEPROM.read(EEPROM_ADR_MIN_L)));
+    rc_out_max=((EEPROM.read(EEPROM_ADR_MAX_H)<<8) | (EEPROM.read(EEPROM_ADR_MAX_L)));
+    rc_in_neutral=((EEPROM.read(EEPROM_ADR_STOP_H)<<8) | (EEPROM.read(EEPROM_ADR_STOP_L)));
+    rc_out=rc_in_neutral;
 } 
  
  
@@ -86,6 +134,13 @@ void loop()
     rc_out_max=rc_out;
     //  min is calculated from MAX
     rc_out_min=rc_in_neutral-(rc_out-rc_in_neutral);
+    // save 16 bit values to eeprom
+    EEPROM.write(EEPROM_ADR_MIN_L,(rc_out_min & 0xff));        
+    EEPROM.write(EEPROM_ADR_MIN_H,(rc_out_min >> 8));    
+    EEPROM.write(EEPROM_ADR_MAX_L,(rc_out_max & 0xff));        
+    EEPROM.write(EEPROM_ADR_MAX_H,(rc_out_max >> 8));    
+    EEPROM.write(EEPROM_ADR_STOP_L,(rc_in_neutral & 0xff));        
+    EEPROM.write(EEPROM_ADR_STOP_H,(rc_in_neutral >> 8));            
   }
 
   // NORMAL OPERATION

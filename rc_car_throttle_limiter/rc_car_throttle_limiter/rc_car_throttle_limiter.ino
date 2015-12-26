@@ -5,7 +5,7 @@
 // This simple Arduino application will go into an RC Car.
 // The Arduino will sit between the receiver and the ESC controlling the motor.
 // 
-// The "kits" poblem: Most ready to run cars do not have a computer transmitter.
+// The "kids" poblem: Most ready to run cars do not have a computer transmitter.
 // This means it is not possible to limit the maximum throttle (= max speed).
 // A throttle limit will prevent too fast running for beginners (my younger son ;-)).
 // 
@@ -25,7 +25,7 @@
 //
 // SAFETY NOTE: While programming, make sure, that wheels are free in the air!
 // KEEY YOUR FINGERS SAVE!
-// WEAR SAFTY GLASSED TO PREVENT THINGS FLY IN YOU EYS
+// WEAR SAFTY GLASSED TO PREVENT THINGS FLY IN YOU EYES
 //
 // 1. Programming MUST be done within 5 seconds after start
 // 2. Put tranceiver to neutral

@@ -21,10 +21,26 @@
 // From forward to backward = BREAK only. Max reverse = Maximum break.
 // For backward, it is required to go from Break to neutral, than back again
 
+// Programming mode for range:
+//
+// SAFETY NOTE: While programming, make sure, that wheels are free in the air!
+// KEEY YOUR FINGERS SAVE!
+// WEAR SAFTY GLASSED TO PREVENT THINGS FLY IN YOU EYS
+//
+// 1. Programming MUST be done within 5 seconds after start
+// 2. Put tranceiver to neutral
+// 3. Press key AND HOLD. This saves the neutral position.
+// 4. Now you can give as much "throttle" (FORWARD) as you want for max power.
+// 5. Release the key. Curent max value is saved and also take for min
+
+
+#define SERIAL_DEBUG 0
+
 // Pining.
 #define PROG_KEY 2 // push button to GND
 #define RC_IN 5    // connect to receiver channel 1
 #define RC_OUT 6   // connect to ESC
+#define LED 13     // show state
 
 // PPM values
 #define STOP_RANGE 40 // size of neutral zone 
@@ -66,17 +82,20 @@ uint8_t last_state=STATE_STOP;
 // in and out values
 uint16_t rc_in=0;
 uint16_t rc_out=rc_in_neutral;
- 
+// just to disable programming after 10 seconds for security 
+uint8_t enable_prog=1;
  
 void setup() 
 { 
+
+  // init servo
   my_esc.attach(RC_OUT);  // attaches the servo on pin 9 to the servo object 
+  my_esc.writeMicroseconds(rc_in_neutral);
+  // init system
   state=STATE_STOP;
   last_state=state;
-  my_esc.writeMicroseconds(rc_in_neutral);
   // input key for programming
-  pinMode(PROG_KEY, INPUT_PULLUP);  
- 
+  pinMode(PROG_KEY, INPUT_PULLUP);   
   // check if eeprom is matching current software
   // the check is done by comparing magic key in eeprom
   uint8_t eeprom_invalid=0;
@@ -116,8 +135,14 @@ void setup()
 void loop() 
 { 
   // PROGRAMMING MODE
+  // allow only after 5 seconds after start, to prevent changes
+  // by accident
+  if(  enable_prog && ((millis() > 5000)))
+  {
+    enable_prog=0; // disable programming
+  }
   // check if key is pressed, in that case go to prog mode
-  if(!digitalRead(PROG_KEY))
+  if(enable_prog && !digitalRead(PROG_KEY))
   {
     // prog mode, reset limits
     rc_out_max=MAX;
@@ -212,7 +237,7 @@ void loop()
   // put output to servo
   my_esc.writeMicroseconds(rc_out);
     
-  
+ #if SERIAL_DEBUG == 1
 
   switch(state)
   {
@@ -240,9 +265,6 @@ void loop()
   Serial.print(rc_in);        // current input
   Serial.print(" => "); // Print the value of 
   Serial.println(rc_out);        // new output
-  
-  
-  
-  
-      
+#endif 
+        
 } 

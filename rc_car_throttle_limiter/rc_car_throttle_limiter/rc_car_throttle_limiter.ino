@@ -54,7 +54,7 @@ After regular start:
    This will be indicated by 5 LED flashes with pause.
    */
 
-#define SERIAL_DEBUG 1
+#define SERIAL_DEBUG 0
 
 // Pining.
 #define PROG_KEY 2 // push button to GND
@@ -209,8 +209,8 @@ void loop()
             // show next stage
             while(digitalRead(PROG_KEY))
             {
-                flash_led(1, 100, 500);
-                delay(1000);
+                flash_led(1, 10, 50);
+                (void)wait_and_drive(1000,0);
             }
             // 2. Save Neutral
             while(!digitalRead(PROG_KEY))
@@ -230,42 +230,40 @@ void loop()
             TXLED0;
             delay(500);
             // show next stage
+            // 3. MAX
+            // measure max value
+            rc_out_max=0;
             while(digitalRead(PROG_KEY))
-            {
-                flash_led(2, 100, 500);
-                delay(1000);
+            {                
+                flash_led(2, 10, 50);
+                uint16_t max=wait_and_drive(1000,1);
+                if(rc_out_max<max) // keep highest
+                {
+                    rc_out_max=max;
+                }
             }        
-            // 3. Save MAX
-            not_saved=1;            
             while(!digitalRead(PROG_KEY))
             {
                 TXLED1;
-                if(not_saved)
-                {  
-                    // get new max
-                    rc_out_max=read_rc(10);                    
-                    not_saved=0;
-                }                
             }  
             TXLED0;
             delay(500);
             // show next stage
+            // 4. MIN
+            // measure min value
+            rc_out_min=2500;
             while(digitalRead(PROG_KEY))
             {
-                flash_led(3, 100, 500);
-                delay(1000);
+                flash_led(3, 10, 50);
+                uint16_t min=wait_and_drive(1000,0);
+                if(rc_out_min>min) // keep lowest
+                {
+                    rc_out_min=min;
+                }
             }        
-            // 4. Save MIN
-            not_saved=1;              
             while(!digitalRead(PROG_KEY))
             {
                 TXLED1;
-                if(not_saved)
-                {  
-                    // get new max
-                    rc_out_min=read_rc(10);                    
-                    not_saved=0;
-                }                  
             }
             TXLED0;            
             delay(1000);       
@@ -444,3 +442,39 @@ uint16_t read_rc_jitter (uint8_t count)
     return(max-min+STOP_RANGE_SPARE);
 }
 
+// to a long wait spitted into 20 shorts and upate rc output during wait
+// can be used to wait long, bur Rc controll still works
+// mode stores min or max value while waiting
+// mode 0 = min
+// mode 1 = max
+uint16_t wait_and_drive(uint16_t wait, uint8_t mode)
+{
+   uint8_t count=20; 
+   uint16_t value =2500; // init for min
+   if(mode) // set to 0 on max check
+   {
+        value=0;
+   }
+   uint16_t rc_in=0;
+   for(uint8_t loop=0; loop< count; loop++)
+    {
+        rc_in=pulseIn(RC_IN, HIGH, 25000);
+        if(mode) // max
+        {
+            if(rc_in>value)
+            {
+                value=rc_in;
+            }
+        }
+        else // min
+        {
+            if(rc_in<value)
+            {
+                value=rc_in;
+            }        
+        }
+        my_esc.writeMicroseconds(rc_in);
+        delay(wait/count); // to partial wait
+    }        
+    return(value);
+}

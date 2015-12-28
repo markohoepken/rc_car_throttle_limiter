@@ -30,9 +30,26 @@ SAFETY NOTE: While programming, make sure, that wheels are free in the air!
 KEEY YOUR FINGERS SAVE!
 WEAR SAFTY GLASSED TO PREVENT THINGS FLY IN YOU EYS
 
-1. Programming MUST be done within 5 seconds after start
-2. Put tranceiver to neutral
-3. Press key AND HOLD. This saves the neutral position.
-4. Now you can give as much "throttle" (FORWARD) as you want for max power.
-5. Release the key. Curent max value is saved and also take for min
+0. For resetting to factory  values, PRESS the key while turning on, untile the LED will flash fast
+
+After regular start:
+1. Enter programming by pressing the key >3 seconds.
+   The green LED will get ON. Release key
+2. State: Prgrogramm neutral 
+   This will be indicated by 1 LED flash with pause.
+   Set RX to neutral. 
+   Press KEY until LED will become permanent ON. 
+   Release Key
+3. State: Prgrogramm MAX
+   This will be indicated by 2 LED flashes with pause.
+   Set RX to wanted maximum value, and HOLD.
+   Press KEY until LED will become permanent ON. 
+   Release Key
+3. State: Prgrogramm MIN
+   This will be indicated by 3 LED flashes with pause.
+   Set RX to wanted minimum value, and HOLD.
+   Press KEY until LED will become permanent ON. 
+   Release Key
+4. Settings will be stored.
+   This will be indicated by 5 LED flashes with pause.
 

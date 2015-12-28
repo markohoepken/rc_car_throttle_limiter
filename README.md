@@ -34,22 +34,40 @@ WEAR SAFTY GLASSED TO PREVENT THINGS FLY IN YOU EYS
 
 After regular start:
 1. Enter programming by pressing the key >3 seconds.
-   The green LED will get ON. Release key
-2. State: Prgrogramm neutral 
-   This will be indicated by 1 LED flash with pause.
-   Set RX to neutral. 
-   Press KEY until LED will become permanent ON. 
-   Release Key
-3. State: Prgrogramm MAX
-   This will be indicated by 2 LED flashes with pause.
-   Set RX to wanted maximum value, and HOLD.
-   Press KEY until LED will become permanent ON. 
-   Release Key
-3. State: Prgrogramm MIN
-   This will be indicated by 3 LED flashes with pause.
-   Set RX to wanted minimum value, and HOLD.
-   Press KEY until LED will become permanent ON. 
-   Release Key
-4. Settings will be stored.
-   This will be indicated by 5 LED flashes with pause.
 
+   The green LED will get ON. Release key
+   
+2. State: Prgrogramm neutral 
+3.
+   This will be indicated by 1 LED flash with pause.
+
+   Set RX to neutral. 
+
+   Press KEY until LED will become permanent ON. 
+   
+   Release Key
+   
+3. State: Prgrogramm MAX
+
+   This will be indicated by 2 LED flashes with pause.
+   
+   Set RX to wanted maximum value, and HOLD.
+   
+   Press KEY until LED will become permanent ON. 
+   
+   Release Key
+   
+3. State: Prgrogramm MIN
+
+   This will be indicated by 3 LED flashes with pause.
+   
+   Set RX to wanted minimum value, and HOLD.
+   
+   Press KEY until LED will become permanent ON. 
+   
+   Release Key
+   
+4. Settings will be stored.
+
+   This will be indicated by 5 LED flashes with pause.
+   

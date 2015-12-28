@@ -27,12 +27,32 @@
 // KEEY YOUR FINGERS SAVE!
 // WEAR SAFTY GLASSED TO PREVENT THINGS FLY IN YOU EYES
 //
-// 1. Programming MUST be done within 5 seconds after start
-// 2. Put tranceiver to neutral
-// 3. Press key AND HOLD. This saves the neutral position.
-// 4. Now you can give as much "throttle" (FORWARD) as you want for max power.
-// 5. Release the key. Curent max value is saved and also take for min
+/*
 
+
+0. For resetting to factory  values, PRESS the key while turning on, untile the LED will flash fast
+
+After regular start:
+1. Enter programming by pressing the key >3 seconds.
+   The green LED will get ON. Release key
+2. State: Prgrogramm neutral 
+   This will be indicated by 1 LED flash with pause.
+   Set RX to neutral. 
+   Press KEY until LED will become permanent ON. 
+   Release Key
+3. State: Prgrogramm MAX
+   This will be indicated by 2 LED flashes with pause.
+   Set RX to wanted maximum value, and HOLD.
+   Press KEY until LED will become permanent ON. 
+   Release Key
+3. State: Prgrogramm MIN
+   This will be indicated by 3 LED flashes with pause.
+   Set RX to wanted minimum value, and HOLD.
+   Press KEY until LED will become permanent ON. 
+   Release Key
+4. Settings will be stored.
+   This will be indicated by 5 LED flashes with pause.
+   */
 
 #define SERIAL_DEBUG 1
 
@@ -43,7 +63,11 @@
 #define LED 13     // show state
 
 // PPM values
-#define STOP_RANGE 15 // size of neutral zone 
+#define STOP_RANGE 30 // size of neutral zone, deppends on jitter of TX
+                      // too small value = bad detection of break
+                      // too large value = large dead band
+                      // on programming there is a calibration for that
+#define STOP_RANGE_SPARE 5 // will be added to range of measured rx jitter                      
 #define STOP 1500     // average neutral zone
 #define MAX 2000      // max value
 #define MIN 1000      // bin value
@@ -58,7 +82,7 @@
 #define DEBOUNCE_DELAY 100
 uint8_t key_pressed=0;
 
-#define HEARD_BEAT_LOOP 100
+#define HEARD_BEAT_LOOP 150
 uint8_t heard_beat =0;
 
 // eeprom handling
@@ -68,7 +92,9 @@ uint8_t heard_beat =0;
 #define EEPROM_ADR_MAX_H 3
 #define EEPROM_ADR_STOP_L 4
 #define EEPROM_ADR_STOP_H 5
-#define EEPROM_ADR_MAGIC_KEY 6
+#define EEPROM_ADR_RANGE_L 6
+#define EEPROM_ADR_RANGE_H 7
+#define EEPROM_ADR_MAGIC_KEY 8
 #define EEPROM_MAGIC_KEY_SIZE 17
 const uint8_t MagicKey[] PROGMEM = { // key to check if EEprom matches software
   'T','H','R','O','T','T','L','E',' ',
@@ -83,6 +109,7 @@ Servo my_esc;  // create servo object to control a servo
 uint16_t rc_out_max = MAX;
 uint16_t rc_out_min = MIN;
 uint16_t rc_in_neutral = STOP;
+uint16_t rc_neutral_range = STOP_RANGE;
 // init states
 uint8_t state=STATE_STOP;
 uint8_t last_state=STATE_STOP; 
@@ -103,11 +130,21 @@ void setup()
     last_state=state;
     // input key for programming
     pinMode(PROG_KEY, INPUT_PULLUP);   
+    // RESET VALUE HANDLER
+    uint8_t eeprom_invalid=0;
+    while(!digitalRead(PROG_KEY))
+    {
+        flash_led(1, 50, 50);
+        eeprom_invalid=1; // force reset of values
+    }  
+    if(eeprom_invalid==1)
+    {
+        // INDICATE RESET
+        flash_led(5, 100, 500);
+    }
     // check if eeprom is matching current software
     // the check is done by comparing magic key in eeprom
-    uint8_t eeprom_invalid=0;
     for(int i=0; i<EEPROM_MAGIC_KEY_SIZE; i++)
-
     {
          if((uint8_t)EEPROM.read(EEPROM_ADR_MAGIC_KEY+i) != (uint8_t)pgm_read_word_near(MagicKey + i))
          {
@@ -117,7 +154,7 @@ void setup()
     }
      if(eeprom_invalid) // EEprom does not match current software, must store new defaults
     {
-        // save 16 bit
+    // save 16 bit
         EEPROM.write(EEPROM_ADR_MIN_L,lowByte(MIN));        
         EEPROM.write(EEPROM_ADR_MIN_H,highByte(MIN));    
         // save 16 bit
@@ -126,16 +163,20 @@ void setup()
         // save 16 bit
         EEPROM.write(EEPROM_ADR_STOP_L,lowByte(STOP));
         EEPROM.write(EEPROM_ADR_STOP_H,highByte(STOP));
+        // save 16 bit        
+        EEPROM.write(EEPROM_ADR_RANGE_L,lowByte(STOP_RANGE));
+        EEPROM.write(EEPROM_ADR_RANGE_H,highByte(STOP_RANGE));        
         // store magic key for next check
         for(int i=0; i<EEPROM_MAGIC_KEY_SIZE; i++)
         {
             EEPROM.write(EEPROM_ADR_MAGIC_KEY+i,pgm_read_word_near(MagicKey + i));
-        }         
+        }          
     }
     // read settings from EEProm
     rc_out_min=((EEPROM.read(EEPROM_ADR_MIN_H)<<8) | (EEPROM.read(EEPROM_ADR_MIN_L)));
     rc_out_max=((EEPROM.read(EEPROM_ADR_MAX_H)<<8) | (EEPROM.read(EEPROM_ADR_MAX_L)));
     rc_in_neutral=((EEPROM.read(EEPROM_ADR_STOP_H)<<8) | (EEPROM.read(EEPROM_ADR_STOP_L)));
+    rc_neutral_range=((EEPROM.read(EEPROM_ADR_RANGE_H)<<8) | (EEPROM.read(EEPROM_ADR_RANGE_L)));    
     rc_out=rc_in_neutral;
 } 
  
@@ -161,9 +202,10 @@ void loop()
             // flash until release
             while(!digitalRead(PROG_KEY))
             {
-                flash_led(1, 50, 100);
+                TXLED1;
             }  
-            delay(500);
+            TXLED0;
+            delay(500);            
             // show next stage
             while(digitalRead(PROG_KEY))
             {
@@ -173,17 +215,19 @@ void loop()
             // 2. Save Neutral
             while(!digitalRead(PROG_KEY))
             {
-                flash_led(1, 50, 100);
+                TXLED1;
                 if(not_saved)
                 {
                     // prog mode, reset limits
                     rc_out_max=MAX;
                     rc_out_min=MIN;  
                     // set neutral position
-                    rc_in_neutral=read_rc(10);                    
+                    rc_in_neutral=read_rc(20);                    
+                    rc_neutral_range=read_rc_jitter (20);
                     not_saved=0;
                 }
-            }              
+            } 
+            TXLED0;
             delay(500);
             // show next stage
             while(digitalRead(PROG_KEY))
@@ -195,7 +239,7 @@ void loop()
             not_saved=1;            
             while(!digitalRead(PROG_KEY))
             {
-                flash_led(1, 50, 100);
+                TXLED1;
                 if(not_saved)
                 {  
                     // get new max
@@ -203,6 +247,7 @@ void loop()
                     not_saved=0;
                 }                
             }  
+            TXLED0;
             delay(500);
             // show next stage
             while(digitalRead(PROG_KEY))
@@ -214,7 +259,7 @@ void loop()
             not_saved=1;              
             while(!digitalRead(PROG_KEY))
             {
-                flash_led(1, 50, 100);
+                TXLED1;
                 if(not_saved)
                 {  
                     // get new max
@@ -222,6 +267,7 @@ void loop()
                     not_saved=0;
                 }                  
             }
+            TXLED0;            
             delay(1000);       
             // done
             flash_led(5, 100, 500);
@@ -231,7 +277,10 @@ void loop()
             EEPROM.write(EEPROM_ADR_MAX_L,(rc_out_max & 0xff));        
             EEPROM.write(EEPROM_ADR_MAX_H,(rc_out_max >> 8));    
             EEPROM.write(EEPROM_ADR_STOP_L,(rc_in_neutral & 0xff));        
-            EEPROM.write(EEPROM_ADR_STOP_H,(rc_in_neutral >> 8));                             
+            EEPROM.write(EEPROM_ADR_STOP_H,(rc_in_neutral >> 8));    
+            EEPROM.write(EEPROM_ADR_RANGE_L,(rc_neutral_range & 0xff));        
+            EEPROM.write(EEPROM_ADR_RANGE_H,(rc_neutral_range >> 8));  
+            
         }
     }
     else // run mode
@@ -243,49 +292,15 @@ void loop()
             heard_beat=0;
             TXLED1;
         }
-
-    
         key_pressed=0;  // reset counter for programming mode enter
-        #if 0  
-        if(  enable_prog && ((millis() > 5000)))
-        {
-          enable_prog=0; // disable programming
-        }
-        // check if key is pressed, in that case go to prog mode
-        if(enable_prog && !digitalRead(PROG_KEY))
-        {
-          // prog mode, reset limits
-          rc_out_max=MAX;
-          rc_out_min=MIN;  
-          // set neutral position
-          rc_in_neutral=pulseIn(RC_IN, HIGH, 25000); // Read the pulse width of input    
-          // loop until key release to capture new values
-          while(!digitalRead(PROG_KEY))
-          {
-              rc_out = pulseIn(RC_IN, HIGH, 25000); // Read the pulse width of input
-              my_esc.writeMicroseconds(rc_out);
-          }
-          //  calculate new limits
-          rc_out_max=rc_out;
-          //  min is calculated from MAX
-          rc_out_min=rc_in_neutral-(rc_out-rc_in_neutral);
-          // save 16 bit values to eeprom
-          EEPROM.write(EEPROM_ADR_MIN_L,(rc_out_min & 0xff));        
-          EEPROM.write(EEPROM_ADR_MIN_H,(rc_out_min >> 8));    
-          EEPROM.write(EEPROM_ADR_MAX_L,(rc_out_max & 0xff));        
-          EEPROM.write(EEPROM_ADR_MAX_H,(rc_out_max >> 8));    
-          EEPROM.write(EEPROM_ADR_STOP_L,(rc_in_neutral & 0xff));        
-          EEPROM.write(EEPROM_ADR_STOP_H,(rc_in_neutral >> 8));            
-        }
-        
-    #endif  
+
       
         // NORMAL OPERATION
         // read input value from receiver
         rc_in = pulseIn(RC_IN, HIGH, 25000); // Read the pulse width of input
           
         // FORWARD CASE
-        if(rc_in > (rc_in_neutral+ STOP_RANGE))
+        if(rc_in > (rc_in_neutral+ rc_neutral_range))
         {
             state= STATE_FORWARD;
             // do output calculation
@@ -298,9 +313,9 @@ void loop()
         // keep track of last state to have correct break management
         else if (
             // neutral zone
-            rc_in < (rc_in_neutral+ STOP_RANGE)
+            rc_in < (rc_in_neutral+ rc_neutral_range)
             &&
-            rc_in > (rc_in_neutral - STOP_RANGE)
+            rc_in > (rc_in_neutral - rc_neutral_range)
         )
         {
             if(state != STATE_STOP) // State change
@@ -312,7 +327,7 @@ void loop()
         }
         // BREAK / REVERSE CASE
         // break / reverse state machine
-        if(rc_in < (rc_in_neutral- STOP_RANGE))
+        if(rc_in < (rc_in_neutral- rc_neutral_range))
         {
             if(
                 (state != STATE_BREAK)
@@ -375,7 +390,10 @@ void loop()
     Serial.print("throttle:"); // Print the value of 
     Serial.print(rc_in);        // current input
     Serial.print(" => "); // Print the value of 
-    Serial.println(rc_out);        // new output
+    Serial.print(rc_out);        // new output
+    Serial.print(" Jitter; "); // Print the value of 
+    Serial.println(rc_neutral_range);        // new output
+    
 #endif 
         
 } 
@@ -403,3 +421,26 @@ uint16_t read_rc (uint8_t count)
     }
     return(input/count); 
 }
+
+// measures jitter for good neutral detection
+uint16_t read_rc_jitter (uint8_t count)
+{
+    uint32_t input=0;
+    uint32_t min=2500;
+    uint32_t max=0;
+    for(uint8_t loop=0; loop< count; loop++)
+    {
+        input=pulseIn(RC_IN, HIGH, 25000);
+        if(input<min)
+        {
+            min=input;
+        }
+        if(input>max)
+        {
+            max=input;
+        }
+    }
+    // calualte jitter
+    return(max-min+STOP_RANGE_SPARE);
+}
+

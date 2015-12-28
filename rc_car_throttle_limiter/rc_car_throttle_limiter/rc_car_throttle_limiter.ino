@@ -34,7 +34,7 @@
 // 5. Release the key. Curent max value is saved and also take for min
 
 
-#define SERIAL_DEBUG 0
+#define SERIAL_DEBUG 1
 
 // Pining.
 #define PROG_KEY 2 // push button to GND
@@ -43,16 +43,23 @@
 #define LED 13     // show state
 
 // PPM values
-#define STOP_RANGE 40 // size of neutral zone 
+#define STOP_RANGE 15 // size of neutral zone 
 #define STOP 1500     // average neutral zone
 #define MAX 2000      // max value
 #define MIN 1000      // bin value
 
-// state coding
+// state coding operations
 #define STATE_STOP 0     // neutal zone of Rx signal
 #define STATE_FORWARD 1  // forward driving
 #define STATE_BACKWARD 2 // backward driving
 #define STATE_BREAK 3    // breaking
+
+#define ENTER_DELAY 20
+#define DEBOUNCE_DELAY 100
+uint8_t key_pressed=0;
+
+#define HEARD_BEAT_LOOP 100
+uint8_t heard_beat =0;
 
 // eeprom handling
 #define EEPROM_ADR_MIN_L 0
@@ -65,7 +72,7 @@
 #define EEPROM_MAGIC_KEY_SIZE 17
 const uint8_t MagicKey[] PROGMEM = { // key to check if EEprom matches software
   'T','H','R','O','T','T','L','E',' ',
-  'R','E','V','1','.','0','.','0'
+  'R','E','V','1','.','0','.','1'
 };
 
 #include <EEPROM.h>
@@ -84,30 +91,31 @@ uint16_t rc_in=0;
 uint16_t rc_out=rc_in_neutral;
 // just to disable programming after 10 seconds for security 
 uint8_t enable_prog=1;
+
  
 void setup() 
 { 
+    // init servo
+    my_esc.attach(RC_OUT);  // attaches the servo on pin 9 to the servo object 
+    my_esc.writeMicroseconds(rc_in_neutral);
+    // init system
+    state=STATE_STOP;
+    last_state=state;
+    // input key for programming
+    pinMode(PROG_KEY, INPUT_PULLUP);   
+    // check if eeprom is matching current software
+    // the check is done by comparing magic key in eeprom
+    uint8_t eeprom_invalid=0;
+    for(int i=0; i<EEPROM_MAGIC_KEY_SIZE; i++)
 
-  // init servo
-  my_esc.attach(RC_OUT);  // attaches the servo on pin 9 to the servo object 
-  my_esc.writeMicroseconds(rc_in_neutral);
-  // init system
-  state=STATE_STOP;
-  last_state=state;
-  // input key for programming
-  pinMode(PROG_KEY, INPUT_PULLUP);   
-  // check if eeprom is matching current software
-  // the check is done by comparing magic key in eeprom
-  uint8_t eeprom_invalid=0;
-  for(int i=0; i<EEPROM_MAGIC_KEY_SIZE; i++)
-   {
-        if((uint8_t)EEPROM.read(EEPROM_ADR_MAGIC_KEY+i) != (uint8_t)pgm_read_word_near(MagicKey + i))
-        {
-            eeprom_invalid=1;
-            break;
-        }        
-   }
-    if(eeprom_invalid) // EEprom does not match current software, must store new defaults
+    {
+         if((uint8_t)EEPROM.read(EEPROM_ADR_MAGIC_KEY+i) != (uint8_t)pgm_read_word_near(MagicKey + i))
+         {
+             eeprom_invalid=1;
+             break;
+         }        
+    }
+     if(eeprom_invalid) // EEprom does not match current software, must store new defaults
     {
         // save 16 bit
         EEPROM.write(EEPROM_ADR_MIN_L,lowByte(MIN));        
@@ -134,137 +142,264 @@ void setup()
  
 void loop() 
 { 
-  // PROGRAMMING MODE
-  // allow only after 5 seconds after start, to prevent changes
-  // by accident
-  if(  enable_prog && ((millis() > 5000)))
-  {
-    enable_prog=0; // disable programming
-  }
-  // check if key is pressed, in that case go to prog mode
-  if(enable_prog && !digitalRead(PROG_KEY))
-  {
-    // prog mode, reset limits
-    rc_out_max=MAX;
-    rc_out_min=MIN;  
-    // set neutral position
-    rc_in_neutral=pulseIn(RC_IN, HIGH, 25000); // Read the pulse width of input    
-    // loop until key release to capture new values
-    while(!digitalRead(PROG_KEY))
+    // PROGRAMMING MODE
+    // allow only after 5 seconds after start, to prevent changes
+    // by accident
+    
+    // programming statemachine
+    
+    // 1. enter programming mode by pressing the key ~3 seconds
+    if(!digitalRead(PROG_KEY)) // key pressed
     {
-        rc_out = pulseIn(RC_IN, HIGH, 25000); // Read the pulse width of input
+        key_pressed++;   
+        delay(DEBOUNCE_DELAY);
+        if(key_pressed > ENTER_DELAY)
+        {
+            uint8_t not_saved=1;
+            // 1. ENTER
+            // flash to show endered mode
+            // flash until release
+            while(!digitalRead(PROG_KEY))
+            {
+                flash_led(1, 50, 100);
+            }  
+            delay(500);
+            // show next stage
+            while(digitalRead(PROG_KEY))
+            {
+                flash_led(1, 100, 500);
+                delay(1000);
+            }
+            // 2. Save Neutral
+            while(!digitalRead(PROG_KEY))
+            {
+                flash_led(1, 50, 100);
+                if(not_saved)
+                {
+                    // prog mode, reset limits
+                    rc_out_max=MAX;
+                    rc_out_min=MIN;  
+                    // set neutral position
+                    rc_in_neutral=read_rc(10);                    
+                    not_saved=0;
+                }
+            }              
+            delay(500);
+            // show next stage
+            while(digitalRead(PROG_KEY))
+            {
+                flash_led(2, 100, 500);
+                delay(1000);
+            }        
+            // 3. Save MAX
+            not_saved=1;            
+            while(!digitalRead(PROG_KEY))
+            {
+                flash_led(1, 50, 100);
+                if(not_saved)
+                {  
+                    // get new max
+                    rc_out_max=read_rc(10);                    
+                    not_saved=0;
+                }                
+            }  
+            delay(500);
+            // show next stage
+            while(digitalRead(PROG_KEY))
+            {
+                flash_led(3, 100, 500);
+                delay(1000);
+            }        
+            // 4. Save MIN
+            not_saved=1;              
+            while(!digitalRead(PROG_KEY))
+            {
+                flash_led(1, 50, 100);
+                if(not_saved)
+                {  
+                    // get new max
+                    rc_out_min=read_rc(10);                    
+                    not_saved=0;
+                }                  
+            }
+            delay(1000);       
+            // done
+            flash_led(5, 100, 500);
+            // save 16 bit values to eeprom
+            EEPROM.write(EEPROM_ADR_MIN_L,(rc_out_min & 0xff));        
+            EEPROM.write(EEPROM_ADR_MIN_H,(rc_out_min >> 8));    
+            EEPROM.write(EEPROM_ADR_MAX_L,(rc_out_max & 0xff));        
+            EEPROM.write(EEPROM_ADR_MAX_H,(rc_out_max >> 8));    
+            EEPROM.write(EEPROM_ADR_STOP_L,(rc_in_neutral & 0xff));        
+            EEPROM.write(EEPROM_ADR_STOP_H,(rc_in_neutral >> 8));                             
+        }
+    }
+    else // run mode
+    {
+        // heard beat
+        TXLED0;
+        if(heard_beat++>HEARD_BEAT_LOOP)
+        {
+            heard_beat=0;
+            TXLED1;
+        }
+
+    
+        key_pressed=0;  // reset counter for programming mode enter
+        #if 0  
+        if(  enable_prog && ((millis() > 5000)))
+        {
+          enable_prog=0; // disable programming
+        }
+        // check if key is pressed, in that case go to prog mode
+        if(enable_prog && !digitalRead(PROG_KEY))
+        {
+          // prog mode, reset limits
+          rc_out_max=MAX;
+          rc_out_min=MIN;  
+          // set neutral position
+          rc_in_neutral=pulseIn(RC_IN, HIGH, 25000); // Read the pulse width of input    
+          // loop until key release to capture new values
+          while(!digitalRead(PROG_KEY))
+          {
+              rc_out = pulseIn(RC_IN, HIGH, 25000); // Read the pulse width of input
+              my_esc.writeMicroseconds(rc_out);
+          }
+          //  calculate new limits
+          rc_out_max=rc_out;
+          //  min is calculated from MAX
+          rc_out_min=rc_in_neutral-(rc_out-rc_in_neutral);
+          // save 16 bit values to eeprom
+          EEPROM.write(EEPROM_ADR_MIN_L,(rc_out_min & 0xff));        
+          EEPROM.write(EEPROM_ADR_MIN_H,(rc_out_min >> 8));    
+          EEPROM.write(EEPROM_ADR_MAX_L,(rc_out_max & 0xff));        
+          EEPROM.write(EEPROM_ADR_MAX_H,(rc_out_max >> 8));    
+          EEPROM.write(EEPROM_ADR_STOP_L,(rc_in_neutral & 0xff));        
+          EEPROM.write(EEPROM_ADR_STOP_H,(rc_in_neutral >> 8));            
+        }
+        
+    #endif  
+      
+        // NORMAL OPERATION
+        // read input value from receiver
+        rc_in = pulseIn(RC_IN, HIGH, 25000); // Read the pulse width of input
+          
+        // FORWARD CASE
+        if(rc_in > (rc_in_neutral+ STOP_RANGE))
+        {
+            state= STATE_FORWARD;
+            // do output calculation
+            // linar interpolation to scale wanted maximum value to output on forward
+            float calc_out = rc_in_neutral + (float)(rc_in-rc_in_neutral)*((float)(rc_out_max-rc_in_neutral)/(float)(MAX-rc_in_neutral));
+            // set output
+            rc_out=calc_out;
+        }  
+        // STOP CASE
+        // keep track of last state to have correct break management
+        else if (
+            // neutral zone
+            rc_in < (rc_in_neutral+ STOP_RANGE)
+            &&
+            rc_in > (rc_in_neutral - STOP_RANGE)
+        )
+        {
+            if(state != STATE_STOP) // State change
+            {
+                last_state=state; // forward, backward or break
+            }
+            state= STATE_STOP;
+            rc_out=rc_in_neutral;
+        }
+        // BREAK / REVERSE CASE
+        // break / reverse state machine
+        if(rc_in < (rc_in_neutral- STOP_RANGE))
+        {
+            if(
+                (state != STATE_BREAK)
+                &&
+                (state != STATE_BACKWARD)    
+            ) // change of state
+            {
+                if(last_state== STATE_FORWARD) // last was backward, must be break
+                {
+                    state= STATE_BREAK;
+                }
+                else  // othercase must be reverse
+                {
+                    state= STATE_BACKWARD;
+                }
+            }        
+            // break handler
+            if(state== STATE_BREAK)
+            {
+                // break, pass full value
+                rc_out=rc_in;
+            }
+            // backward handler
+            if(state== STATE_BACKWARD)
+            {
+                // reverse handler
+                // do output calculation
+                // linar interpolation to scale wanted minimum value to output on reverse      
+                float calc_out = rc_in_neutral - (float)(rc_in_neutral-rc_in)*((float)(rc_in_neutral-rc_out_min)/(float)(rc_in_neutral-MIN)); 
+                // set output        
+                rc_out=calc_out;
+            }
+        }
+        // put output to servo
         my_esc.writeMicroseconds(rc_out);
-    }
-    //  calculate new limits
-    rc_out_max=rc_out;
-    //  min is calculated from MAX
-    rc_out_min=rc_in_neutral-(rc_out-rc_in_neutral);
-    // save 16 bit values to eeprom
-    EEPROM.write(EEPROM_ADR_MIN_L,(rc_out_min & 0xff));        
-    EEPROM.write(EEPROM_ADR_MIN_H,(rc_out_min >> 8));    
-    EEPROM.write(EEPROM_ADR_MAX_L,(rc_out_max & 0xff));        
-    EEPROM.write(EEPROM_ADR_MAX_H,(rc_out_max >> 8));    
-    EEPROM.write(EEPROM_ADR_STOP_L,(rc_in_neutral & 0xff));        
-    EEPROM.write(EEPROM_ADR_STOP_H,(rc_in_neutral >> 8));            
-  }
-
-  // NORMAL OPERATION
-  // read input value from receiver
-  rc_in = pulseIn(RC_IN, HIGH, 25000); // Read the pulse width of input
-    
-  // FORWARD CASE
-  if(rc_in > (rc_in_neutral+ STOP_RANGE))
-  {
-    state= STATE_FORWARD;
-    // do output calculation
-    // linar interpolation to scale wanted maximum value to output on forward
-    float calc_out = rc_in_neutral + (float)(rc_in-rc_in_neutral)*((float)(rc_out_max-rc_in_neutral)/(float)(MAX-rc_in_neutral));
-    // set output
-    rc_out=calc_out;
-  }  
-  // STOP CASE
-  // keep track of last state to have correct break management
-  else if (
-    // neutral zone
-    rc_in < (rc_in_neutral+ STOP_RANGE)
-    &&
-    rc_in > (rc_in_neutral - STOP_RANGE)
-  )
-  {
-    if(state != STATE_STOP) // State change
+    }    
+#if SERIAL_DEBUG == 1    
+    switch(state)
     {
-        last_state=state; // forward, backward or break
+      case STATE_STOP: Serial.print("STOP ");
+      break;
+      case STATE_FORWARD: Serial.print("FORWARD ");
+      break;
+      case STATE_BACKWARD: Serial.print("BACKWARD ");
+      break;    
+      case STATE_BREAK: Serial.print("BREAK ");
+      break;    
     }
-    state= STATE_STOP;
-    rc_out=rc_in_neutral;
-  }
-  // BREAK / REVERSE CASE
-  // break / reverse state machine
-  if(rc_in < (rc_in_neutral- STOP_RANGE))
-  {
-    if(
-        (state != STATE_BREAK)
-        &&
-        (state != STATE_BACKWARD)    
-    ) // change of state
+    switch(last_state)
     {
-        if(last_state== STATE_FORWARD) // last was backward, must be break
-        {
-            state= STATE_BREAK;
-        }
-        else  // othercase must be reverse
-        {
-            state= STATE_BACKWARD;
-        }
-    }        
-    // break handler
-    if(state== STATE_BREAK)
-    {
-        // break, pass full value
-        rc_out=rc_in;
-    }
-    // backward handler
-    if(state== STATE_BACKWARD)
-    {
-        // reverse handler
-        // do output calculation
-        // linar interpolation to scale wanted minimum value to output on reverse      
-        float calc_out = rc_in_neutral - (float)(rc_in_neutral-rc_in)*((float)(rc_in_neutral-rc_out_min)/(float)(rc_in_neutral-MIN)); 
-        // set output        
-        rc_out=calc_out;
-    }
-  }
-  // put output to servo
-  my_esc.writeMicroseconds(rc_out);
-    
- #if SERIAL_DEBUG == 1
-
-  switch(state)
-  {
-    case STATE_STOP: Serial.print("STOP ");
-    break;
-    case STATE_FORWARD: Serial.print("FORWARD ");
-    break;
-    case STATE_BACKWARD: Serial.print("BACKWARD ");
-    break;    
-    case STATE_BREAK: Serial.print("BREAK ");
-    break;    
-  }
-  switch(last_state)
-  {
-    case STATE_STOP: Serial.print("(STOP) ");
-    break;
-    case STATE_FORWARD: Serial.print("(FORWARD) ");
-    break;
-    case STATE_BACKWARD: Serial.print("(BACKWARD) ");
-    break;    
-    case STATE_BREAK: Serial.print("(BREAK) ");
-    break;    
-  }  
-  Serial.print("throttle:"); // Print the value of 
-  Serial.print(rc_in);        // current input
-  Serial.print(" => "); // Print the value of 
-  Serial.println(rc_out);        // new output
+      case STATE_STOP: Serial.print("(STOP) ");
+      break;
+      case STATE_FORWARD: Serial.print("(FORWARD) ");
+      break;
+      case STATE_BACKWARD: Serial.print("(BACKWARD) ");
+      break;    
+      case STATE_BREAK: Serial.print("(BREAK) ");
+      break;    
+    }  
+    Serial.print("throttle:"); // Print the value of 
+    Serial.print(rc_in);        // current input
+    Serial.print(" => "); // Print the value of 
+    Serial.println(rc_out);        // new output
 #endif 
         
 } 
+
+// simple helper function to create a number of LED flashes
+void flash_led(uint8_t count, uint8_t on, uint8_t off)
+{
+    for(uint8_t loop=0; loop< count; loop++)
+    {
+        TXLED1;
+        delay(on);
+        TXLED0;
+        delay(off);
+    }
+}
+
+// read count times the RC input an return average
+uint16_t read_rc (uint8_t count)
+{
+    uint32_t input=0;
+    pulseIn(RC_IN, HIGH, 25000);
+    for(uint8_t loop=0; loop< count; loop++)
+    {
+        input+=pulseIn(RC_IN, HIGH, 25000);
+    }
+    return(input/count); 
+}

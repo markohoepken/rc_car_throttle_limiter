@@ -1,6 +1,8 @@
 # rc_car_throttle_limiter
 Arduino based throttle limiter for RC cars. Reduce speed for kids, but with full break control.
 
+[![rc_car_throttle_limiter](https://raw.githubusercontent.com/wiki/markohoepken/rc_car_throttle_limiter/images/youtube.png)](https://www.youtube.com/watch?v=dqSAg1g7NE4 "RC Car Throttle Limiter")
+
 CHECK THE WIKI FOR SCHEMATICS AND SOME PICTURES.
 
 by Marko Hoepken... 5 hour project for christmas gift ;-)

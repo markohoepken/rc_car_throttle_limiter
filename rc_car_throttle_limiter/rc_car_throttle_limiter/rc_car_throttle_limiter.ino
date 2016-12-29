@@ -54,6 +54,13 @@ After regular start:
    This will be indicated by 5 LED flashes with pause.
    */
 
+#ifndef TXLED0 // Use inbuilt led (pin 13) on Arduino Nano boards instead of TXLED
+  #ifdef ARDUINO_AVR_NANO
+    #define TXLED0      PORTB &= ~(1<<5)
+    #define TXLED1      PORTB |= (1<<5)
+  #endif
+#endif
+
 #define SERIAL_DEBUG 0
 
 // Pining.

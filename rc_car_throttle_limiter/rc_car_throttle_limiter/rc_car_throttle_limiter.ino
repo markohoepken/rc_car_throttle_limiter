@@ -54,6 +54,13 @@ After regular start:
    This will be indicated by 5 LED flashes with pause.
    */
 
+#ifndef TXLED0 // Use inbuilt led (pin 13) on Arduino Nano boards instead of TXLED
+  #ifdef ARDUINO_AVR_NANO
+    #define TXLED0      PORTB &= ~(1<<5)
+    #define TXLED1      PORTB |= (1<<5)
+  #endif
+#endif
+
 #define SERIAL_DEBUG 0
 
 // Pining.
@@ -140,7 +147,7 @@ void setup()
     if(eeprom_invalid==1)
     {
         // INDICATE RESET
-        flash_led(5, 100, 500);
+        flash_led(5, 100, 255);
     }
     // check if eeprom is matching current software
     // the check is done by comparing magic key in eeprom
@@ -268,7 +275,7 @@ void loop()
             TXLED0;            
             delay(1000);       
             // done
-            flash_led(5, 100, 500);
+            flash_led(5, 100, 255);
             // save 16 bit values to eeprom
             EEPROM.write(EEPROM_ADR_MIN_L,(rc_out_min & 0xff));        
             EEPROM.write(EEPROM_ADR_MIN_H,(rc_out_min >> 8));    
